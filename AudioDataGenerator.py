@@ -10,7 +10,11 @@ def rms_energy(x):
 
 # adjusts the sound pressure level (SPL) of an audio signal to a desired level
 def SPL_cal(x, SPL) :
+	# x: The audio signal (an array of samples).
+	# SPL: The desired sound pressure level in decibels (dB).
+	# Lp=10log(p/p0)^2
 	SPL_before = 20 * np.log10(np.sqrt(np.mean(x**2)) / (20 * 1e-6))
 	y = x * 10 ** ((SPL - SPL_before) / 20)
 	return y
+
 
