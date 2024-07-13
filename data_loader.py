@@ -49,21 +49,24 @@ class load_dataset(Dataset):
 		return batch
 
 	
-	def norm(x) :
+	def norm(x):
 		return x / (np.max(np.abs(x) + 1e-10 ))
-	
-	def lps(audio):
-		# 1. STFT: Converts the time-domain signal into a time-frequency representation, 
-		#  producing a 2D array (spectrogram) where one axis represents time and the other represents frequency.
-		# 2. Normalization: Adjusts the amplitude of the spectrogram values, often to a common scale.
-		spec = norm(stft(audio, n_fft=512, hop_length=128, win_length=512, window=np.sqrt(np.hanning(512))))
 
-	
 	def db(x):
 		xdb = 20 * np.log10(np.abs(x) + np.spacing(1))
 		xdb[xdb < -120] = -120
 		xdb = (xdb + 60) / 60
 		return xdb
+
+	# Returns Log Power Spectrum 
+	def lps(audio):
+		# 1. STFT: Converts the time-domain signal into a time-frequency representation, 
+		#  producing a 2D array (spectrogram) where one axis represents time and the other represents frequency.
+		# 2. Normalization: Adjusts the amplitude of the spectrogram values, often to a common scale.
+		spec = norm(stft(audio, n_fft=512, hop_length=128, win_length=512, window=np.sqrt(np.hanning(512))))
+		spec = db(spec)
+		return spec
+	
 
 if __name__ == '__main__' :
 	# Test Dataloader 
