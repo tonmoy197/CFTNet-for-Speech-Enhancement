@@ -42,20 +42,70 @@ def add_noise(signal, noise, fs, snr, signal_energy = 'rms'):
 
 def datagenerator(in_path, out_path, noise_file, snr, num_audio_sample, sample_margin, fs):
 	for idx in range(num_audio_sample) :
-		# data for input
+		# data for input, 
 		out_file_noisy = "Noisy_" + noise_file + "_" + str(snr)+"_dB_"+str(idx + sample_margin)
 		out_file_clean = "Clean_" + str(idx + sample_margin)
-		clean, fs = lr.load(in_path + '/Clean/Clean_'+str(idx+sample_margin)+'.wav', sr = fs)
+		clean, fs = lr.load(in_path + '/Clean/Clean_SPK1_S'+str(idx+sample_margin)+'.wav', sr = fs)
 		noise, fs = lr.load(in_path + '/Different_Noise/' + noise_file + '_noise.wav', sr = fs)
 
+		# clean, noisy is calibrated to an SPL of 65 dB
 		clean = SPL_cal(clean, 65)
 		noisy = add_noise(clean, noise, fs, snr)
 		noisy = SPL_cal(noisy, 65)
 
+		# Creating paths if they not exits 
+		Path(os.path.dirname(out_path + '/Clean/')).mkdir(parents=True, exist_ok= True)
+		Path(os.path.dirname(out_path + '/Noisy/')).mkdir(parents=True, exist_ok=True)
+
+		# storing the generated file 
 		sf.write(out_path + '/Noisy/' + out_file_noisy + ".wav", noisy, fs)
 		sf.write(out_path + '/Clean/' + out_file_clean + ".wav", clean, fs)
+		print(str(idx), end=" ")
 
-		print(str(idx))
+	print("\n")
+	
+if __name__ == '__main__' :
+	path = os.getcwd()
+	in_path = path + '/Database/Original_Samples'
+	out_path = path + '/Database/Build'
+	
+	Path(os.path.dirname(out_path + '/Test/Enhanced/')).mkdir(parents=True, exist_ok=True)
 
 
+# ----------------Train, Dev, Test ----------------#
+fs = 16000
+noise_type = ['Babble', 'Car']
+path = os.getcwd()
+
+# --------------------Train---------------------------#
+print("---------Started generating Train data ---------")
+snr_all = [0, 5]
+num_audio_sample =  10
+sample_margin = 1 
+for noise_file in noise_type :
+	for snr in snr_all:
+		datagenerator(in_path, out_path+'/Train/', noise_file, snr, num_audio_sample, sample_margin, fs )
 		
+
+# --------------------Dev ----------------------------#
+print("---------Started generating Dev data ---------")
+
+snr_all = [0, 5]
+num_audio_sample = 5
+sample_margin = 11
+for noise_file in noise_type:
+	for snr in snr_all:
+		datagenerator(in_path, out_path + '/Dev/' , noise_file, snr, num_audio_sample, sample_margin, fs)
+
+
+# -------------------- Test ----------------------------#
+print("---------Started generating Test data ---------")
+
+snr_all = [5, 10]
+num_audio_sample = 5
+sample_margin = 16
+for noise_file in noise_type:
+	for snr in snr_all:
+		datagenerator(in_path, out_path + '/Test/' , noise_file, snr, num_audio_sample, sample_margin, fs)
+
+print("----------Generation Completed --------------- ")
