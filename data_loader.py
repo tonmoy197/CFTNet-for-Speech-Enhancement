@@ -12,7 +12,7 @@ import warnings
 warnings.filterwarnings("ignore")
 epsilon = np.finfo(np.float32).eps
 
-datadir = os.getcwd() + '/Database/Build/Train'
+datadir = os.getcwd() + '/Database/Build/Train/Clean/'
 
 class load_dataset(Dataset):
 	def __init__(self, datadir ):
@@ -74,8 +74,6 @@ if __name__ == '__main__' :
 	Path(outdir).mkdir(parents=True, exist_ok=True)
 	dataset = load_dataset(datadir)
 
-	print(outdir)
-
 	data_loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=12, pin_memory=True)
 	#  The enumerate function adds a counter to an iterable. Here, it generates pairs of (index, batch) 
 	# for each batch of data loaded by data_loader.
@@ -84,8 +82,10 @@ if __name__ == '__main__' :
 			print(batch['noisy'].shape, batch['clean'].shape)
 
 			# Convert 'noisy' and 'clean' tensors to NumPy arrays and compute their LPS
-			nspec = lps(batch['noisey'][0].cpu().numpy())
+			nspec = lps(batch['noisy'][0].cpu().numpy())
 			cspec = lps(batch['clean'][0].cpu().numpy())
+
+			print(outdir)
 
 			# Save the LPS spectrogram images using the 'jet' colormap
 			# np.flipud(nspec): Flips the spectrogram array nspec upside down,
