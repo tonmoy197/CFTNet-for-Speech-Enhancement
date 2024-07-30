@@ -27,6 +27,27 @@ The Octave Band Matrix (OBM) is used to aggregate spectral components into frequ
 ### What is Log Power Spectrum (LPS) ?
 The Log Power Spectrum is a representation of the signal's power across different frequencies, expressed in decibels (dB). It is commonly used in audio signal processing for tasks like speech recognition, noise reduction, and audio analysis.
 
+### Difference between Normal Conv and depthwise conv, explain the benefits ?
+In a standard convolution, each filter operates on all the input channels and produces a single output channel. This involves a significant number of multiplications and additions.
+
+In depthwise convolution, each filter operates on only one input channel. Thus, the number of filters is equal to the number of input channels, and each filter produces one output channel.
+
+Benefits:
+1. Efficiency: Reduces the number of parameters and computational load.
+2. Speed: Faster inference times, particularly beneficial for real-time applications.
+
+### What is Depthwise Separable Convolution (DSC) ?
+Depthwise separable convolution is a technique in deep learning used to reduce the computational cost and number of parameters in convolutional neural networks (CNNs). It achieves this by decomposing a standard convolution into two separate operations: depthwise convolution and pointwise convolution.
+
+Given input tensor with shape : (H, W, Di)
+1. Depthwise Convolution:
+	-	Applies K×K filters to each channel.
+	-	Output shape: (H, W, Di)
+
+2. Pointwise Convolution:
+	-	Applies a 1×1 convolution with Do filters 
+	-	Output shape: (H, W, Do)
+
 # Evalution Matrices 
 ### What is log spectral distance (LSD) ?
 LSD measures the distance between two power spectra on a logarithmic scale. It's particularly useful when comparing signals in the frequency domain, where differences in spectral shape are important.
