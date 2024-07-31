@@ -367,7 +367,7 @@ class TransformerEncoderLayer(Module):
             state['activation'] = F.relu
         super(TransformerEncoderLayer, self).__setstate__(state)
 
-    def forward(self, src, src_mask = None, src_mask = None, src_key_padding_mask = None):
+    def forward(self, src, src_mask = None, src_key_padding_mask = None):
         """ 
         Args : 
             src : the sequence to the encoder layer (required)
