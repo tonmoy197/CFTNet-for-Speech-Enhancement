@@ -47,16 +47,14 @@ class ComplexEncoder(nn.Module):
 
 class ComplexDecoder(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1),
-                 output_padding=(0, 0), bias=False, DSC=False):
+                 output_padding=None, bias=False, DSC=False):
         super(ComplexDecoder, self).__init__()
-        # DSC: depthwise_separable_conv
         if DSC:
             self.conv = DSC_Decoder(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding,
-                                    output_padding=output_padding, bias=bias)
+                                    output_padding=output_padding or (0, 0), bias=bias)
         else:
             self.conv = CplxConvTranspose2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride,
-                                            padding=padding, output_padding=output_padding, bias=bias)
-
+                                            padding=padding, output_padding=output_padding or (0, 0), bias=bias)
         self.norm = CplxBatchNorm2d(out_channels)
 
     def forward(self, x):
@@ -93,6 +91,9 @@ class DSC_Decoder(nn.Module):
         out = self.pointwise(out)
         return out
 
+
+
+
 # -------------------------------- Depth wise Seperable Convolution --------------------------------
 class depthwise_separable_convx(nn.Module):
     def __init__(self, nin, nout, kernel_size=3, padding=1, bias=False):
@@ -105,7 +106,6 @@ class depthwise_separable_convx(nn.Module):
         out = self.pointwise(out)
         return out
 
-
 # Step: 1.2 >>>>>>>>>>>>>>>>>>>>>>>>>>>  Frequency Tranformation Block >>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 # Change the shape of the feature
 class NodeReshape(nn.Module):
@@ -113,124 +113,218 @@ class NodeReshape(nn.Module):
         super(NodeReshape, self).__init__()
         self.shape = shape
 
-    def forward(self, feature_in : torch.Tensor):
-        # Finding the desired shape
-        shape = feature_in.size()
-        batch = shape[0]
-        new_shape = [batch]
-        new_shape.extend(list(self.shape))
-        # Reshaping 
+    def forward(self, feature_in: torch.Tensor):
+        # Reshaping by preserving the batch size
+        batch_size = feature_in.size(0)
+        new_shape = (batch_size, *self.shape)
         return feature_in.reshape(new_shape)
-    
+
+
 # performs a complex linear transformation on the input tensor
 class Freq_FC(nn.Module):
-    def __init__(self, F_dim, bias = False):
+    def __init__(self, F_dim, bias=False):
         super(Freq_FC, self).__init__()
-        self.linear = CplxLinear(F_dim, F_dim, bias = bias)
+        self.linear = CplxLinear(F_dim, F_dim, bias=bias)
 
     def forward(self, x):
-        out = x.transpose(-1, -2).contiguous() # [Batch , Channel_in_out , T, F]
-        # Apply the complex linear layer
-        out = self.linear(out) # .contigous()
-        # Convert the real and imaginary parts to a complex tensor
-        out = torch.complex(out.real, out.img)
-        # Transpose the last two dimensions back to the original order and ensure contiguous memory layout;
-        out = out.transpose(-1, -2).contiguous() # [Batch, channel_in_out , F, T]
-        return out 
+        out = x.transpose(-1, -2).contiguous()  # [batch, channel_in_out, T, F]
+        out = self.linear(out)  # .contiguous()
+        out = torch.complex(out.real, out.imag)
+        out = out.transpose(-1, -2).contiguous()  # [batch, channel_in_out, F, T]
+        return out
 
+
+# class ComplexFTB(torch.nn.Module):
+
+#     def __init__(self, F_dim, channels):
+#         super(ComplexFTB, self).__init__()
+#         self.channels = channels
+#         self.C_r = 5
+#         self.F_dim = F_dim
+
+#         # Presumably a complex-valued 2D convolutional layer and batch normalization
+#         self.Conv2D_1 = nn.Sequential(
+#             CplxConv2d(in_channels=self.channels, out_channels=self.C_r, kernel_size=1, stride=1, padding=0),
+#             CplxBatchNorm2d(self.C_r),
+
+#         )
+#         self.Conv1D_1 = nn.Sequential(
+#             CplxConv1d(self.F_dim * self.C_r, self.F_dim, kernel_size=9, padding=4),
+#             CplxBatchNorm1d(self.F_dim),
+#         )
+#         # self.Conv1D_1 = nn.Sequential(
+#         #     CplxConv1d(50, self.F_dim, kernel_size=9, padding=4),
+#         #     CplxBatchNorm1d(self.F_dim),
+#         # )
+
+        
+#         self.FC = Freq_FC(self.F_dim, bias=False)
+#         self.Conv2D_2 = nn.Sequential(
+#             CplxConv2d(2*self.channels, self.channels, kernel_size = 1, stride = 1, padding = 0),
+#             CplxBatchNorm2d(self.channels)
+#         )
+#         self.att_inner_reshape = NodeReshape([self.F_dim * self.C_r, -1])
+#         self.att_out_reshape = NodeReshape([1, F_dim, -1])
+        
+#     def cat(self, x, y, dim):
+#         real = torch.cat([x.real, y.real], dim)
+#         imag = torch.cat([x.imag, y.imag], dim)
+#         return ComplexTensor(real, imag)
+    
+#     def forward(self, inputs, verbose=False):
+#             # feature_n: [batch, channel_in_out, T, F]
+#             _, _, self.T_dim, self.F_dim = inputs.shape
+            
+#             #-------------- STEP - 1 : T-F Attention Module ------------------------------
+#             # Conv2D 
+#             out = complex_relu(self.Conv2D_1(inputs))
+            
+#             if verbose: print('Layer-1               : ', out.shape)  # [B,Cr,T,F]
+#             # Reshape: [batch, channel_attention, F, T] -> [batch, channel_attention*F, T]
+#             out = out.view(out.shape[0], out.shape[1] * out.shape[2], out.shape[3])
+#             # out = self.att_inner_reshape(out);
+#             if verbose: print('Layer-2               : ', out.shape)
+#             # out = out.view(-1, self.T_dim, self.F_dim * self.C_r) ; print(out.shape) # [B,c_ftb_r*f,segment_length]
+#             # Conv1D
+#             out = complex_relu(self.Conv1D_1(out))
+#             if verbose: print('Layer-3               : ', out.shape)  # [B,F, T]
+#             # temp = self.att_inner_reshape(temp); print(temp.shape)
+#             # adds a new dimension to the tensor at the specified position, which in this case is at index 1
+#             out = out.unsqueeze(1)
+#             # out = out.view(-1, self.channels, self.F_dim, self.T_dim);
+#             if verbose: print('Layer-4               : ', out.shape)  # [B,c_a,segment_length,1]
+
+#             #--------------- STEP - 2 : Pointwise Multiplication with input and FTM-----------------
+#             out = out * inputs
+#             if verbose: print('Layer-5               : ', out.shape)  # [B,c_a,segment_length,1]*[B,c_a,segment_length,f]
+#             # Frequency- FC
+#             # out = torch.transpose(out, 2, 3)  # [batch, channel_in_out, T, F]
+#             out = self.FC(out)
+#             # if verbose: print('Layer-6               : ', out.shape)  # [B,c_a,segment_length,f]
+#             # out = torch.transpose(out, 2, 3)  # [batch, channel_in_out, T, F]
+
+#             #---------------- STEP -3 : Concatenation with Input and Conv2D ---------------------------
+#             out = self.cat(out, inputs, 1)
+#             if verbose: print('Layer-7               : ', out.shape)  # [B,2*c_a,segment_length,f]
+#             # Conv2D
+#             outputs = complex_relu(self.Conv2D_2(out))
+#             if verbose: print('Layer-8               : ', outputs.shape)  # [B,c_a,segment_length,f]
+
+#             return outputs
 
 class ComplexFTB(torch.nn.Module):
-
     def __init__(self, F_dim, channels):
         super(ComplexFTB, self).__init__()
         self.channels = channels
         self.C_r = 5
         self.F_dim = F_dim
 
-        # Presumably a complex-valued 2D convolutional layer and batch normalization
-        self.Conv1D_1 = nn.Sequential(
-            CplxConv1d(self.F_dim * self.C_r, self.F_dim, kernel_size =  1, stride = 1, padding = 0),
-            CplxBatchNorm1d(self.C_r)
-        )
         self.Conv2D_1 = nn.Sequential(
-            CplxConv2d(in_channels=self.channels, out_channels=self.C_r, kernel_size=1, stride=1, padding=0),
-            CplxBatchNorm2d(self.C_r),
+        CplxConv2d(in_channels=self.channels, out_channels=self.C_r, kernel_size=1, stride=1, padding=0),
+        CplxBatchNorm2d(self.C_r),
 
+        )
+        self.Conv1D_1 = nn.Sequential(
+        CplxConv1d(self.F_dim * self.C_r, self.F_dim, kernel_size=9, padding=4),
+        CplxBatchNorm1d(self.F_dim),
         )
         self.FC = Freq_FC(self.F_dim, bias=False)
         self.Conv2D_2 = nn.Sequential(
-            CplxConv2d(2*self.channels, self.channels, kernel_size = 1, stride = 1, padding = 0),
-            CplxBatchNorm2d(self.channels)
+        CplxConv2d(2 * self.channels, self.channels, kernel_size=1, stride=1, padding=0),
+        CplxBatchNorm2d(self.channels),
         )
+
         self.att_inner_reshape = NodeReshape([self.F_dim * self.C_r, -1])
         self.att_out_reshape = NodeReshape([1, F_dim, -1])
 
-        def cat(self, x, y, dim):
-            real = torch.cat([x.real, y.real], dim)
-            imag = torch.cat([x.imag, y.imag], dim)
-            return ComplexTensor(real, imag)
-        
-        def forward(self, inputs, verbose=False):
-                # feature_n: [batch, channel_in_out, T, F]
-                _, _, self.F_dim, self.T_dim = inputs.shape
+    def cat(self, x, y, dim):
+        real = torch.cat([x.real, y.real], dim)
+        imag = torch.cat([x.imag, y.imag], dim)
+        return ComplexTensor(real, imag)
 
-                #-------------- STEP - 1 : T-F Attention Module ------------------------------
-                # Conv2D 
-                out = complex_relu(self.Conv2D_1(inputs));
-                if verbose: print('Layer-1               : ', out.shape)  # [B,Cr,T,F]
-                # Reshape: [batch, channel_attention, F, T] -> [batch, channel_attention*F, T]
-                out = out.view(out.shape[0], out.shape[1] * out.shape[2], out.shape[3])
-                # out = self.att_inner_reshape(out);
-                if verbose: print('Layer-2               : ', out.shape)
-                # out = out.view(-1, self.T_dim, self.F_dim * self.C_r) ; print(out.shape) # [B,c_ftb_r*f,segment_length]
-                # Conv1D
-                out = complex_relu(self.Conv1D_1(out));
-                if verbose: print('Layer-3               : ', out.shape)  # [B,F, T]
-                # temp = self.att_inner_reshape(temp); print(temp.shape)
-                out = out.unsqueeze(1)
-                # out = out.view(-1, self.channels, self.F_dim, self.T_dim);
-                if verbose: print('Layer-4               : ', out.shape)  # [B,c_a,segment_length,1]
+    def forward(self, inputs, verbose=False):
+        # feature_n: [batch, channel_in_out, T, F]
 
-                #--------------- STEP - 2 : Pointwise Multiplication with input and FTM-----------------
-                out = out * inputs;
-                if verbose: print('Layer-5               : ', out.shape)  # [B,c_a,segment_length,1]*[B,c_a,segment_length,f]
-                # Frequency- FC
-                # out = torch.transpose(out, 2, 3)  # [batch, channel_in_out, T, F]
-                out = self.FC(out);
-                # if verbose: print('Layer-6               : ', out.shape)  # [B,c_a,segment_length,f]
-                # out = torch.transpose(out, 2, 3)  # [batch, channel_in_out, T, F]
+        _, _, self.F_dim, self.T_dim = inputs.shape
+        # Conv2D
+        out = complex_relu(self.Conv2D_1(inputs))
+        if verbose: print('Layer-1               : ', out.shape)  # [B,Cr,T,F]
+        # Reshape: [batch, channel_attention, F, T] -> [batch, channel_attention*F, T]
+        out = out.view(out.shape[0], out.shape[1] * out.shape[2], out.shape[3])
+        # out = self.att_inner_reshape(out);
+        if verbose: print('Layer-2               : ', out.shape)
+        # out = out.view(-1, self.T_dim, self.F_dim * self.C_r) ; print(out.shape) # [B,c_ftb_r*f,segment_length]
+        # Conv1D
+        out = complex_relu(self.Conv1D_1(out))
+        if verbose: print('Layer-3               : ', out.shape)  # [B,F, T]
+        # temp = self.att_inner_reshape(temp); print(temp.shape)
+        out = out.unsqueeze(1)
+        # out = out.view(-1, self.channels, self.F_dim, self.T_dim);
+        if verbose: print('Layer-4               : ', out.shape)  # [B,c_a,segment_length,1]
+        # Multiplication with input
+        out = out * inputs
+        if verbose: print('Layer-5               : ', out.shape)  # [B,c_a,segment_length,1]*[B,c_a,segment_length,f]
+        # Frequency- FC
+        # out = torch.transpose(out, 2, 3)  # [batch, channel_in_out, T, F]
+        out = self.FC(out)
+        # if verbose: print('Layer-6               : ', out.shape)  # [B,c_a,segment_length,f]
+        # out = torch.transpose(out, 2, 3)  # [batch, channel_in_out, T, F]
+        # Concatenation with Input
+        out = self.cat(out, inputs, 1)
+        if verbose: print('Layer-7               : ', out.shape)  # [B,2*c_a,segment_length,f]
+        # Conv2D
+        outputs = complex_relu(self.Conv2D_2(out))
+        if verbose: print('Layer-8               : ', outputs.shape)  # [B,c_a,segment_length,f]
 
-                #---------------- STEP -3 : Concatenation with Input and Conv2D ---------------------------
-                out = self.cat(out, inputs, 1);
-                if verbose: print('Layer-7               : ', out.shape)  # [B,2*c_a,segment_length,f]
-                # Conv2D
-                outputs = complex_relu(self.Conv2D_2(out));
-                if verbose: print('Layer-8               : ', outputs.shape)  # [B,c_a,segment_length,f]
+        return outputs
+# # Define the input tensor dimensions
+# batch_size = 2
+# channels = 4
+# T_dim = 10
+# F_dim = 8
 
-                return outputs
+# # Create a complex input tensor
+# real_part = torch.randn(batch_size, channels, T_dim, F_dim)
+# imag_part = torch.randn(batch_size, channels, T_dim, F_dim)
+# input_tensor = ComplexTensor(real_part, imag_part)
+
+# # Instantiate the ComplexFTB model
+# model = ComplexFTB(F_dim=F_dim, channels=channels)
+
+# # Run the forward pass
+# output = model(input_tensor, verbose=True)
+
+# # Print the output
+# print("Output shape:", output.real.shape)
 
 
 # Step : 2 >>>>>>>>>>>>>>>>>>>>>>>>>> Skip Connection >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 class SkipBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size = 3, stride = 3, padding = 1, DSC = False):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1, DSC=False):
         super(SkipBlock, self).__init__()
+        # DSC: depthwise_separable_conv
 
         if DSC:
-            self.conv = DSC_Encoder(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding, bias=True)
+            self.conv = DSC_Encoder(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding,
+                                    bias=True)
         else:
-            self.conv = CplxConv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding, bias=True)
+            self.conv = CplxConv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding,
+                                   bias=True)
 
         self.norm = CplxBatchNorm2d(in_channels)
 
-        def forword(self, x):
-            # Q : Why x is added 
-            return complex_relu(self.norm(self.conv(x)) + x)
+    def forward(self, x):
+        return complex_relu(self.norm(self.conv(x))) + x
 
-# Final encoder layer has 1 skipblock but first encoder layer has 8 skipblock, 
-# quantity of skipblock is inversly proportional to the corresponding encoder 
 class SkipConnection(nn.Module):
-    def __init__(self, in_channels, num_convblocks, DSC = False):
-        self.skip_blocks = [SkipBlock(in_channels, out_channels, kernel_size=3, stride=3, padding=1, DSC=DSC ) for k in range(num_convblocks)]
+    """
+    SkipConnection is a concatenations of SkipBlocks
+    """
+
+    def __init__(self, in_channels, num_convblocks, DSC=False):
+        super(SkipConnection, self).__init__()
+        self.skip_blocks = [SkipBlock(in_channels, in_channels, kernel_size=3, stride=1, padding=1, DSC=DSC) for k in
+                            range(num_convblocks)]
         self.skip_path = nn.Sequential(*self.skip_blocks)
 
     def forward(self, x):
@@ -266,7 +360,7 @@ class complex_elu(nn.Module):
 # Step : 4 >>>>>>>>>>>>>>>>>>>>>> Bottleneck Layers >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 # Step : 4.1 --------------------- GRU Layers -----------------------
 class ComplexGRU(nn.Module):
-    def __init__(self, input_size, num_layers):
+    def __init__(self, input_size,output_size, num_layers):
         super(ComplexGRU, self).__init__()
         self.rGRU = nn.Sequential(
             nn.GRU(input_size=input_size, hidden_size= input_size//2, num_layers = num_layers, batch_first=True, bidirectional=True),
@@ -398,3 +492,14 @@ def _get_activation_fn(module, N):
     raise RuntimeError("activation should be relu/gelu, not {}".format(activation))
 
 
+
+# if __name__ == '__main__':
+
+#     # -------------------------  Test FTB block ------------------
+
+#     x = 10 * torch.randn(10, 12, 128, 501)  # feature_n: [batch, channel_in, T, F] torch.Size([10, 12, 128, 501])
+#     x = torch.clamp(x, min=-1, max=1)
+#     model_FTB = ComplexFTB(F_dim=128, channels=x.shape[1]) #
+#     print("Input data shape: " + str(x.shape)) # Input data shape: torch.Size([10, 256, 512]) # feature_n: [batch, channel_in, T, F]
+#     y = model_FTB(x, verbose=True) # torch.Size([10, 12, 128, 501])
+#     print("Output data shape: " + str(y.shape)) # Output data shape: torch.Size([10, 256, 512]) # feature_n: [batch, channel_in, T, F]

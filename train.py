@@ -15,7 +15,7 @@ epsilon = torch.finfo(torch.float32).eps
 class DeepLearningModel(pl.LightningModule):
 	def __init__(self, net, batch_size=1):
 		self.model = net
-		self.modelname = self.model.name
+		self.modelname = self.modelname
 		self.batch_size = batch_size
 		self.si_sdr = SISDRLoss()
 		self.freqloss = STFTLoss(fft_size=320, hop_size=80, win_length=320, sample_rate=16000,scale_invariance=False, w_sc=0.0)
@@ -53,7 +53,7 @@ if __name__ == '__main__':
 	parser.add_argument('--model', type = str, help = 'ModelName', default = 'CFTNet')
 	parser.add_argument('--mode', type=str, help='Choose between "summary" , "Fast_run" or "train"', default = 'summary')
 	parser.add_argument('-b', type=int, help='Batch Size', default=8)
-	parser.add_argument('--e', type=int, help='Epocs', default=2)
+	parser.add_argument('-e', type=int, help='Epocs', default=2)
 	parser.add_argument('--gput', type=str, help='GPU-IDs used to Train', default='0')
 	parser.add_argument('--loss', type=str, help='loss-function', default='SISDR+FreqLoss')
 	args = parser.parse_args()
